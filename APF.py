@@ -89,7 +89,7 @@ class Environment():
     def draw_Environment(self, Gopher, obs,step):
         self.refresh_plot()
 
-        self.title('Velocity obstacle- Toy Problem')
+        self.title('APF- Toy Problem')
         self.start.draw_point(self.ax,'g','*',100)
         self.end.draw_point(self.ax,'r','*',100)
 
@@ -101,8 +101,8 @@ class Environment():
 
         env.fig.savefig('./{}.png'.format(str(step)), dpi=100)
 
-        plt.show()
-        plt.close()
+        #plt.show()
+        #plt.close()
 
     def refresh_plot(self):
         self.fig, self.ax = plt.subplots(1, 1, figsize=(15,15))
@@ -113,38 +113,66 @@ class Environment():
 
 
 def distance(x1,y1,x2,y2):
-    return np.sqrt((x1-x2)**2+(y1-y2)**2)
+    return ((x1-x2)**2+(y1-y2)**2)**0.5
 
 
 class APF():
 
 
-    def __init__(self, gopher,obstacles, begin, end):
+    def __init__(self,env, gopher,obstacles, begin, end):
         self.start=begin
+        self.env=env
         self.goal=end
+        self.obstacles=obstacles
         self.gopher=gopher
-        self.k_att=0.1
-        self.k_rep=100
-        self.max_dist=20
+        self.k_att=0.03
+        self.k_rep=1000
+        self.max_dist=120
         self.max_iteration=1000
         self.i=0
-        self.thresh=1
+        self.thresh=5
         self.path=[]
         self.path_found=False
 
     def attraction(self):
-        attrative_force=np.array([(self.goal.return_x-self.gopher.return_x)*k_att, (self.goal.return_y-self.gopher.return_y)*k_att])
+        attractive_force=np.array([(self.goal.return_x()-self.gopher.return_x())*self.k_att, (self.goal.return_y()-self.gopher.return_y())*self.k_att])
         return attractive_force
 
     def repulsive(self):
         repulsive_force=np.array([0,0])
         for o in self.obstacles:
-            d=dist(self.gopher.return_x,self.gopher.return_y,o.return_x,o.return_y)
-            if d>max_dist:
+            d=np.array([self.gopher.return_x(),self.gopher.return_y()])-np.array([o.return_x(),o.return_y()])
+            u_v=d/np.linalg.norm(d)
+            if np.linalg.norm(d)>self.max_dist:
                 continue
             else:
-                repulsive_force+= 
-           
+                repulsive_force=repulsive_force+ np.array([u_v[0],u_v[1]])*self.k_rep*((1/np.linalg.norm(d))-(1/self.max_dist))/(np.linalg.norm(d)**2)
+        return repulsive_force
+
+    def force_calculation(self):
+
+        step=0
+        print(self.gopher.return_x())
+        print(self.gopher.return_y())
+        print(self.goal.return_x())
+        print(self.goal.return_y())
+        
+        while (self.i < self.max_iteration) and (distance(self.gopher.return_x(),self.gopher.return_y(),self.goal.return_x(),self.goal.return_y())> self.thresh):
+            f=self.attraction()+self.repulsive()
+            f_vector=f/np.linalg.norm(f)
+            next_x=self.gopher.return_x()+(f_vector[0]*dt)
+            next_y=self.gopher.return_y()+(f_vector[1]*dt)
+            next_step=Point(next_x,next_y)  
+            self.path.append([next_x,next_y])
+            step+=1
+            for o in self.obstacles:
+                o.Obs_move()
+
+            self.gopher.robot_move(next_step)
+            if distance(self.gopher.return_x(),self.gopher.return_y(),self.goal.return_x(),self.goal.return_y())<self.thresh:
+                self.path_found=True
+                
+            self.env.draw_Environment(self.gopher,self.obstacles,step)
 
 minX=0
 miny=0
@@ -162,9 +190,10 @@ goal=Point(100,100)
 
 robot=Gopher(start.return_x(),start.return_y(), radius, vel_max)
 
-obstacles=[Obstacle(35, 75, 10, 0, np.pi/6), Obstacle(30, 40, 10, 0, np.pi/3), Obstacle(10, 30, 5 , 0, 0), Obstacle(50, 50, 6 , 0, np.pi/2) ]
+# obstacles=[Obstacle(35, 75, 5, 1, np.pi/6), Obstacle(30, 40, 5, 0, np.pi/3), Obstacle(10, 30, 5 , 1, 0), Obstacle(50, 50, 6 , 1, np.pi/2) ]
+obstacles=[Obstacle(35, 75, 2, 0, np.pi/6), Obstacle(30, 40, 2, 0, np.pi/3), Obstacle(10, 30, 2 , 0, 0), Obstacle(50, 50, 2 , 0, np.pi/2), Obstacle(80, 50, 2, 0, np.pi/6), Obstacle(60, 80, 2, 0, np.pi/3), Obstacle(10, 20, 2 , 0, 0), Obstacle(10,90, 2 , 0, np.pi/2)]
 
 env=Environment(minX,miny,maxX,maxY,start,goal)
 
-VO_traj=Velocity_Obstacles(env, start,goal,robot,obstacles)
-VO_traj.velocity_optimizer()
+Artificial=APF(env, robot ,obstacles,start,goal)
+Artificial.force_calculation()
